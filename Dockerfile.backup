@@ -1,0 +1,98 @@
+##############################################
+# Stage 1: Install Maho on LOCAL Postgres
+# (fast build), then apply Neon patches for runtime
+##############################################
+FROM mahocommerce/maho:26.3.0-php8.4 AS installer
+
+# Install Postgres server + client + pdo_pgsql
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libpq-dev postgresql postgresql-client && \
+    docker-php-ext-install pdo_pgsql && \
+    rm -rf /var/lib/apt/lists/*
+
+# Replace stock Maho with API Platform branch
+WORKDIR /tmp
+ENV COMPOSER_ALLOW_SUPERUSER=1
+RUN rm -rf /app && \
+    git clone --branch feature/api-platform --single-branch --depth 1 \
+        https://github.com/mageaustralia/maho.git /app && \
+    cd /app && \
+    composer install --no-dev --optimize-autoloader --no-interaction && \
+    rm -rf /app/.git
+WORKDIR /app
+
+# API Platform expects this directory
+RUN mkdir -p /app/app/code/core/Maho/ApiPlatform/symfony/src/ApiResource
+
+# Run Postgres, install Maho, dump the result
+RUN pg_lsclusters && \
+    pg_ctlcluster $(pg_lsclusters -h | awk '{print $1, $2}') start && \
+    su - postgres -c "psql -c \"CREATE USER maho WITH SUPERUSER PASSWORD 'maho'\"" && \
+    su - postgres -c "psql -c \"CREATE DATABASE maho OWNER maho\"" && \
+    php maho install \
+        --license_agreement_accepted=yes \
+        --locale=en_AU \
+        --timezone=Australia/Sydney \
+        --default_currency=AUD \
+        --db_host=localhost \
+        --db_name=maho \
+        --db_user=maho \
+        --db_pass=maho \
+        --db_engine=pgsql \
+        --session_save=files \
+        --url=https://my-maho-app.fly.dev/ \
+        --use_secure=yes \
+        --secure_base_url=https://my-maho-app.fly.dev/ \
+        --use_secure_admin=yes \
+        --admin_frontname=admin \
+        --admin_lastname=Admin \
+        --admin_firstname=Maho \
+        --admin_email=admin@example.com \
+        --admin_username=admin \
+        --admin_password=ChangeMe2026Admin! \
+        --sample_data=yes && \
+    su - postgres -c "pg_dump --no-owner --no-acl -Fc maho" > /tmp/maho-dump.pgdump && \
+    php -r "preg_match('/<key[^>]*>(?:<!\[CDATA\[)?([a-f0-9]+)/', file_get_contents('/app/app/etc/local.xml'), \$m); file_put_contents('/tmp/maho-crypt-key', \$m[1]);" && \
+    rm -f /app/app/etc/local.xml && \
+    echo "Install + dump complete."
+
+# Apply Neon compatibility patches AFTER install (for runtime use)
+COPY neon-patch.php /tmp/neon-patch.php
+RUN php /tmp/neon-patch.php
+
+##############################################
+# Stage 2: Runtime image (restores to Neon)
+##############################################
+FROM mahocommerce/maho:26.3.0-php8.4
+
+# Install pdo_pgsql + pg client (for pg_restore)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libpq-dev postgresql-client && \
+    docker-php-ext-install pdo_pgsql && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Litestream (keep for fallback)
+ADD https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64.tar.gz /tmp/litestream.tar.gz
+RUN tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin/ litestream && rm /tmp/litestream.tar.gz
+
+# Copy Maho app from installer stage (with all vendor deps)
+COPY --from=installer /app /app
+WORKDIR /app
+
+# Copy the database dump and crypt key
+COPY --from=installer /tmp/maho-dump.pgdump /maho-dump.pgdump
+COPY --from=installer /tmp/maho-crypt-key /maho-crypt-key
+
+# Caddyfile
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY Caddyfile /etc/frankenphp/Caddyfile
+
+# Keep litestream config as fallback
+COPY litestream.yml /etc/litestream.yml
+
+# Startup script
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+ENTRYPOINT []
+CMD ["/start.sh"]

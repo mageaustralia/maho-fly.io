@@ -1,0 +1,18 @@
+# Credentials
+local.xml
+.env
+
+# Database files
+*.sqlite
+*.db
+*.sql
+
+# Legacy / internal
+CLAUDE.md
+ARCHITECTURE.md
+
+# Fly.io
+.fly/
+
+# macOS
+.DS_Store

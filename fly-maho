@@ -1,0 +1,16 @@
+#!/bin/bash
+# Run maho CLI commands on Fly.io
+# Usage: ./fly-maho <command> [args...]
+# Example: ./fly-maho cache:enable
+#          ./fly-maho index:reindex:all
+
+FLY="${FLYCTL:-fly}"
+APP="maho-demo"
+
+if [ $# -eq 0 ]; then
+  CMD="./maho"
+else
+  CMD="./maho $*"
+fi
+
+exec "$FLY" ssh console -a "$APP" -C "cd /app && $CMD"

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<!--
+  Overrides the pdo_sqlite adapter class to use TursoSqlite.
+  When TURSO_SYNC_URL is set, it uses Turso embedded replica.
+  When not set, it falls back to standard pdo_sqlite.
+-->
+<config>
+    <modules>
+        <MageAustralia_Turso>
+            <version>1.0.0</version>
+        </MageAustralia_Turso>
+    </modules>
+    <global>
+        <resource>
+            <connection_types>
+                <pdo_sqlite>
+                    <adapter>Maho\Db\Adapter\Pdo\TursoSqlite</adapter>
+                    <class>Mage_Core_Model_Resource_Type_Db_Pdo_Sqlite</class>
+                </pdo_sqlite>
+            </connection_types>
+        </resource>
+    </global>
+</config>

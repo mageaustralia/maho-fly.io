@@ -1,0 +1,11 @@
+LOAD DATABASE
+     FROM sqlite:///maho-seed.db
+     INTO {{PGSQL_URI}}
+
+ WITH include drop,
+      create tables,
+      create indexes,
+      reset sequences
+
+  SET work_mem to '32MB',
+      maintenance_work_mem to '64MB';

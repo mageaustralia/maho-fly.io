@@ -1,0 +1,12 @@
+dbs:
+  - path: /data/maho.sqlite
+    replicas:
+      - type: s3
+        bucket: $BUCKET_NAME
+        path: backups/maho.sqlite
+        endpoint: $AWS_ENDPOINT_URL_S3
+        region: $AWS_REGION
+        access-key-id: $AWS_ACCESS_KEY_ID
+        secret-access-key: $AWS_SECRET_ACCESS_KEY
+        sync-interval: 10s
+        snapshot-interval: 1h
